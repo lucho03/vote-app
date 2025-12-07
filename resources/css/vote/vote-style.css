@@ -1,0 +1,44 @@
+body {
+    font-family: system-ui, -apple-system, Roboto, "Segoe UI", sans-serif; padding: 24px;
+}
+
+.card {
+    border: 1px solid #e3e3e3;
+    border-radius: 8px;
+    padding: 16px;
+    display: flex;
+    justify-content: center;
+    min-height: 100%;
+}
+
+#voteForm {
+    width: 60vw;
+    max-height: inherit;
+    display: flex;
+    flex-direction: column;
+    justify-content: space-between;
+    align-items: center;
+}
+
+.btn { 
+    padding: 8px 14px;
+    border-radius: 6px;
+    border: none;
+    cursor: pointer;
+}
+
+.btn-primary {
+    background:#2563eb; color:white
+}
+
+.btn-ghost {
+    background:#f3f4f6
+}
+
+.muted {
+    color:#6b7280
+}
+
+pre {
+    background:#111827; color:#d1d5db; padding:12px; border-radius:6px; overflow:auto
+}
