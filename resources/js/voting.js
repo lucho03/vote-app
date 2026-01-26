@@ -130,6 +130,10 @@ document.addEventListener("DOMContentLoaded", function () {
                 if(response.status !== undefined && response.status == 200) {
                     alert( response.data.message );
 
+                    if(response.data.code !== undefined && response.data.code < 0) {
+                        return;
+                    }
+
                     setTimeout(() => {
                         window.location.replace(endpoints.redirectEndpoint);
                     }, 270);

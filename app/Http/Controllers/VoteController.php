@@ -38,6 +38,13 @@ class VoteController extends Controller
         
         $voter = Person::where('personal_id', $validated['voterID'])->first();
 
+        if( !$voter ) {
+            return response()->json([
+                'code' => -2,
+                'message' => 'Voter not found.',
+            ], 200);
+        }
+
         $data = (new CipherHelper())->decrypt(
             [
             'cipher' => $validated['cipher'],
@@ -49,8 +56,9 @@ class VoteController extends Controller
 
         if( $data === false ) {
             return response()->json([
-                'message' => 'Decryption failed.',
-            ], 400);
+                'code' => -1,
+                'message' => 'Decryption failed! Wrong secret key or corrupted data.',
+            ], 200);
         }
 
         $data = json_decode($data, true);
