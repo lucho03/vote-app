@@ -62,12 +62,21 @@ class VoteController extends Controller
         }
 
         $data = json_decode($data, true);
-
+        
         try {
-            Vote::create([
-                'candidate_id' => $data['candidate'],
-                'person_id' => $voter->getPrimaryKey(),
-            ]);
+            $vote = Vote::where('person_id', $voter->getPrimaryKey())->first();
+
+            if( !$vote ) {
+                Vote::create([
+                    'candidate_id' => $data['candidate'],
+                    'person_id' => $voter->getPrimaryKey(),
+                ]);
+            }
+            else {
+                $vote->update([
+                    'candidate_id' => $data['candidate'],
+                ]);
+            }
 
             $voter->update([
                 'number_votes' => $voter->getNumberVotes() + 1

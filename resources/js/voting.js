@@ -1,5 +1,36 @@
 document.addEventListener("DOMContentLoaded", function () {
+    const partyItems = document.querySelectorAll(".party-item");
     const endpoints = document.getElementById('page-data').dataset;
+
+    partyItems.forEach(party => {
+        party.addEventListener("click", (e) => {
+            e.preventDefault();
+
+            const candidatesItems = party.querySelectorAll(".candidate-item");
+            const currentlyOpen = party.classList.contains('open');
+
+            partyItems.forEach(i => {
+                if( !i.isEqualNode(party) ) {
+                    i.classList.remove('open');
+
+                    i.querySelectorAll(".candidate-radio").forEach(radio => {
+                        radio.checked = false;
+                    });
+                }
+            });
+            document.getElementById("party-" + party.dataset.partyId).checked = true;
+
+            candidatesItems.forEach(candidate => {
+                candidate.addEventListener("click", () => {
+                    document.getElementById("candidate-" + candidate.dataset.candidateId).checked = true;
+                });
+            });
+
+            if (!currentlyOpen) {
+                party.classList.add('open');
+            }
+        });
+    });
 
     async function hashSha512(value) {
         const encoder = new TextEncoder();
