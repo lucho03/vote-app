@@ -3,17 +3,30 @@
 namespace App\Models;
 
 use Illuminate\Database\Eloquent\Model;
+use Illuminate\Support\Facades\Hash;
 use App\Models\Vote;
 
 class Person extends Model
 {
     protected $fillable = [
-        'personal_id',
-        'name',
-        'address',
-        'number_votes',
-        'unique_secret_key',
+        'person_id',
+        'pin_hash',
+        'public_key',
+        'private_key',
     ];
+
+    // protected $hidden = [
+    //     'pin_hash',
+    //     'private_key'
+    // ];
+
+    public function setPin(string $pin): void {
+        $this->pin_hash = Hash::make($pin);
+    }
+
+    public function verifyPin(string $pin): bool {
+        return Hash::check($pin, $this->pin_hash);
+    }
 
     public function votes() {
         return $this->hasMany(Vote::class);
@@ -21,13 +34,5 @@ class Person extends Model
 
     public function getPrimaryKey() {
         return $this->id;
-    }
-
-    public function getSecretKey() {
-        return $this->unique_secret_key;
-    }
-
-    public function getNumberVotes() {
-        return $this->number_votes;
     }
 }

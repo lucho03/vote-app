@@ -9,6 +9,10 @@ use App\Models\Party;
 use App\Models\Person;
 use App\Models\Vote;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Hash;
+use Illuminate\Support\Str;
+use Illuminate\Support\Facades\Cache;
+use App\Helpers\RSAHelper;
 
 class VoteController extends Controller
 {
@@ -28,59 +32,101 @@ class VoteController extends Controller
         ]);
     }
 
-    public function submit(Request $request) {
-        $validated = $request->validate([
-            'cipher' => 'required|string|max:255',
-            'iv' => 'required|string|max:255',
-            'salt' => 'required|string|max:255',
-            'voterID' => 'required|string'
+    public function authenticate(Request $request) {
+        try {
+            $validated = $request->validate([
+                'person_id' => 'required|string|size:10',
+                'pin' => 'required|string|min:4'
+            ]);
+
+            $voter = Person::where('person_id', $validated['person_id'])->first();
+
+            if (!$voter || !Hash::check($validated['pin'], $voter->pin_hash)) {
+                return response()->json([
+                    'error' => 'Invalid credentials'
+                ]);
+            }
+
+            $token = Str::random(64);
+
+            Cache::put("vote_token:$token", $voter->person_id, now()->addMinutes(5));
+
+            return response()->json([
+                'token' => $token
+            ]);
+        }
+        catch (ValidationException $e) {
+            return response()->json([
+                'error' => 'Invalid input'
+            ]);
+        }
+    }
+
+    public function getPublicKey(Request $request) {
+        $token = $request->bearerToken();
+
+        if( !$token ) {
+            return response()->json([
+                'error' => 'Token not provided!'
+            ]);
+        }
+
+        $personId = Cache::get("vote_token:$token");
+
+        if( !$personId ) {
+            return response()->json([
+                'error' => 'Invalid or expired token!'
+            ]);
+        }
+
+        $publicKey = Person::where('person_id', $personId)->value('public_key');
+
+        return response()->json([
+            'public_key' => $publicKey
         ]);
-        
-        $voter = Person::where('personal_id', $validated['voterID'])->first();
+    }
 
-        if( !$voter ) {
+    public function submit(Request $request) {
+        $token = $request->bearerToken();
+
+        if( !$token ) {
             return response()->json([
-                'code' => -2,
-                'message' => 'Voter not found.',
-            ], 200);
+                'error' => 'Token not provided!'
+            ]);
         }
 
-        $data = (new CipherHelper())->decrypt(
-            [
-            'cipher' => $validated['cipher'],
-            'iv' => $validated['iv'],
-            'salt' => $validated['salt'],
-            ],
-            $voter->getSecretKey()
-        );
+        $personId = Cache::get("vote_token:$token");
 
-        if( $data === false ) {
+        if( !$personId ) {
             return response()->json([
-                'code' => -1,
-                'message' => 'Decryption failed! Wrong secret key or corrupted data.',
-            ], 200);
+                'error' => 'Invalid or expired token!'
+            ]);
         }
 
-        $data = json_decode($data, true);
+        $encryptedVote = $request->encrypted_vote;
+        $privateKey = Person::where('person_id', $personId)->value('private_key'); 
+        $privateKeyPem = decrypt($privateKey);
         
+        $voteJson = RSAHelper::decryptRSA($encryptedVote, $privateKeyPem);
+        $voteData = json_decode($voteJson, true);
+        $voter = Person::where('person_id', $personId)->first();
+
+        Cache::forget("vote_token:$token");
+
         try {
             $vote = Vote::where('person_id', $voter->getPrimaryKey())->first();
 
             if( !$vote ) {
                 Vote::create([
-                    'candidate_id' => $data['candidate'],
+                    'candidate_id' => $voteData['candidate'],
                     'person_id' => $voter->getPrimaryKey(),
                 ]);
             }
             else {
                 $vote->update([
-                    'candidate_id' => $data['candidate'],
+                    'candidate_id' => $voteData['candidate'],
                 ]);
             }
-
-            $voter->update([
-                'number_votes' => $voter->getNumberVotes() + 1
-            ]);
         }
         catch( Exception $e ) {
             return response()->json([

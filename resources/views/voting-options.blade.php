@@ -33,8 +33,8 @@
                 </label>
 
                 <label class="person-label">
-                    Voter Secret Key:
-                    <input id="voterSecretKey" class="person-input" placeholder="Secret Key...">
+                    Voter PIN:
+                    <input id="voterPin" class="person-input" placeholder="Pin...">
                 </label>
                 
                 <button id="sendEncryptedData" type="button" class="btn btn-primary">Submit Vote</button>
@@ -43,7 +43,7 @@
     </div>
 @endsection
 
-<div id="page-data" data-submit-endpoint="{{ route('vote.submit') }}" data-redirect-endpoint="{{ route('summary.index') }}" style="display: none"></div>
+<div id="page-data" data-authenticate-endpoint="{{ route('vote.authenticate') }}" data-public-endpoint="{{ route('vote.getPublicKey') }}" data-submit-endpoint="{{ route('vote.submit') }}" data-redirect-endpoint="{{ route('summary.index') }}" style="display: none"></div>
 @push('scripts')
     @vite('resources/js/voting.js')
 @endpush

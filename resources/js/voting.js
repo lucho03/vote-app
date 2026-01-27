@@ -32,89 +32,49 @@ document.addEventListener("DOMContentLoaded", function () {
         });
     });
 
-    async function hashSha512(value) {
-        const encoder = new TextEncoder();
-        const data = encoder.encode(value);
+    function pemToArrayBuffer(pem) {
+        const b64 = pem
+            .replace(/-----BEGIN PUBLIC KEY-----/, '')
+            .replace(/-----END PUBLIC KEY-----/, '')
+            .replace(/\s/g, '');
 
-        const hashBuffer = await crypto.subtle.digest("SHA-512", data);
-        const hashArray = Array.from(new Uint8Array(hashBuffer));
-        const hashHex = hashArray.map(b => b.toString(16).padStart(2, "0")).join("");
-        return hashHex;
-    }
+        const binary = atob(b64);
+        const buffer = new ArrayBuffer(binary.length);
+        const view = new Uint8Array(buffer);
 
-    function arrayBufferToBase64(buffer) {
-        const bytes = new Uint8Array(buffer);
-        let binary = '';
-
-        for (let i=0; i < bytes.byteLength; i++) {
-            binary += String.fromCharCode(bytes[i]);
+        for (let i = 0; i < binary.length; i++) {
+            view[i] = binary.charCodeAt(i);
         }
-        return btoa(binary);
+
+        return buffer;
     }
 
-    function randomSalt() {
-        const bytes = new Uint8Array(16);
-        crypto.getRandomValues(bytes);
-        return bytes;
-    }
+    async function encryptVote(voteData, publicKeyPem) {
+        const keyBuffer = pemToArrayBuffer(publicKeyPem);
 
-    // -------------------------------
-    // AES-GCM encrypt function
-    // Returns { cipherBase64, ivBase64 }
-    // -------------------------------
-
-    async function encryptPayload(plaintext, keyHex) {
-        const key = await crypto.subtle.importKey(
-            'raw',
-            keyHex,
-            { name: 'AES-GCM' },
+        const publicKey = await crypto.subtle.importKey(
+            "spki",
+            keyBuffer,
+            { name: "RSA-OAEP", hash: "SHA-1" },
             false,
-            ['encrypt']
-        );
-        const iv = crypto.getRandomValues(new Uint8Array(12));
-        const data = new TextEncoder().encode(plaintext);
-
-        const cipherBuffer = await crypto.subtle.encrypt(
-            { name: 'AES-GCM', iv: iv, tagLength: 128 },
-            key,
-            data
+            ["encrypt"]
         );
 
-        return {
-            cipherBase64: arrayBufferToBase64(cipherBuffer),
-            ivBase64: arrayBufferToBase64(iv.buffer)
-        };
+        const encrypted = await crypto.subtle.encrypt(
+            { name: "RSA-OAEP" },
+            publicKey,
+            new TextEncoder().encode(voteData)
+        );
+
+        return btoa(String.fromCharCode(...new Uint8Array(encrypted)));
     }
 
-    async function deriveKey(password, saltBytes) {
-        const keyMaterial = await crypto.subtle.importKey(
-            "raw",
-            new TextEncoder().encode(password),
-            "PBKDF2",
-            false,
-            ["deriveBits"]
-        );
-
-        const derivedBits = await crypto.subtle.deriveBits(
-            {
-                name: "PBKDF2",
-                hash: "SHA-256",
-                salt: saltBytes,
-                iterations: 200000
-            },
-            keyMaterial,
-            256
-        );
-
-        return new Uint8Array(derivedBits);
-    }
-
-    async function encryptAndSubmit() {
+    async function submitEndpoint() {
         const formData = new FormData(document.getElementById('voteForm'));
         const party = formData.get('party');
         const candidate = formData.get('candidate');
         const voterId = document.getElementById('voterId').value;
-        const voterSecretKey = document.getElementById('voterSecretKey').value;
+        const voterPin = document.getElementById('voterPin').value;
 
         if (!party) {
             alert('Please select a party!');
@@ -131,54 +91,61 @@ document.addEventListener("DOMContentLoaded", function () {
             return;
         }
 
-        if(!voterSecretKey) {
+        if(!voterPin) {
             alert('Please insert your secret key!');
             return;
         }
+
+        const resultAuth = await axios.post(endpoints.authenticateEndpoint, {
+            person_id: voterId,
+            pin: voterPin
+        });
+
+        if(resultAuth.data.error !== undefined) {
+            alert('Authentication error: ' + resultAuth.data.error);
+            return;
+        }
+
+        const resultPublicKey = await axios.get(endpoints.publicEndpoint, {
+            headers: {
+                'Authorization': 'Bearer ' + resultAuth.data.token
+            }
+        });
         
-        const payloadObj = {
+        const payload = JSON.stringify({
             party: party,
             candidate: candidate,
             voter_id: voterId,
             timestamp: new Date().toISOString()
-        };
-        const plaintext = JSON.stringify(payloadObj);
+        });
 
-        const hashedVoterID = await hashSha512(voterId);
+        const encryptedVote = await encryptVote(payload, resultPublicKey.data.public_key);
 
-        try {
-            const salt = randomSalt();
-            const key = await deriveKey(voterSecretKey, salt);
-            const { cipherBase64, ivBase64 } = await encryptPayload(plaintext, key);
+        axios.post(endpoints.submitEndpoint, {
+            encrypted_vote: encryptedVote
+        }, {
+            headers: {
+                'Content-Type': 'application/json',
+                'Authorization': 'Bearer ' + resultAuth.data.token
+            } 
+        })
+        .then(response => {
+            if(response.status !== undefined && response.status == 200) {
+                alert( response.data.message );
 
-            axios.post(endpoints.submitEndpoint, {
-                cipher: cipherBase64,
-                iv: ivBase64,
-                salt: btoa(String.fromCharCode(...salt)),
-                voterID: hashedVoterID
-            })
-            .then(response => {
-                if(response.status !== undefined && response.status == 200) {
-                    alert( response.data.message );
-
-                    if(response.data.code !== undefined && response.data.code < 0) {
-                        return;
-                    }
-
-                    setTimeout(() => {
-                        window.location.replace(endpoints.redirectEndpoint);
-                    }, 270);
+                if(response.data.code !== undefined && response.data.code < 0) {
+                    return;
                 }
-                console.log(response);
-            })
-            .catch(error => {
-                console.error('Error submitting vote:', error);
-            });
 
-        } catch (err) {
-            console.error(err);
-        }
+                setTimeout(() => {
+                    window.location.replace(endpoints.redirectEndpoint);
+                }, 270);
+            }
+        })
+        .catch(error => {
+            console.error('Error submitting vote:', error);
+        });
     }
 
-    document.getElementById('sendEncryptedData').addEventListener('click', encryptAndSubmit);
+    document.getElementById('sendEncryptedData').addEventListener('click', submitEndpoint);    
 });

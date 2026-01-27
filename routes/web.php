@@ -20,6 +20,10 @@ Route::prefix('admin')->middleware(['auth', 'admin'])->name('admin.')->group(fun
 
 Route::get('/', [VoteController::class, 'main'])->name('vote.main');
 Route::get('/vote', [VoteController::class, 'index'])->name('vote.index');
+
+Route::post('/auth-voter', [VoteController::class, 'authenticate'])->name('vote.authenticate');
+Route::get('/public-key', [VoteController::class, 'getPublicKey'])->name('vote.getPublicKey');
+
 Route::post('/submit-vote', [VoteController::class, 'submit'])->name('vote.submit');
 Route::get('/summary', [SummaryController::class, 'index'])->name('summary.index');
 Route::get('/summary/data', [SummaryController::class, 'data'])->name('summary.data');
